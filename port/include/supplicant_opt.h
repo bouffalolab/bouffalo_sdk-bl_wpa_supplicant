@@ -32,9 +32,11 @@
 
 #define SAE_FFC 0
 
-// WPS
+// WPS / P2P
+#if defined(CONFIG_BL_SUPPLICANT_WPS) || defined(CONFIG_BL_SUPPLICANT_P2P)
 #define CONFIG_WPS2
 #define CONFIG_WPS_PIN
+#endif
 
 
 //#define CONFIG_SUPPLICANT_REKEY_WHEN_TIMEDOUT

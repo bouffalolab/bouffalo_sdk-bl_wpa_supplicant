@@ -527,13 +527,13 @@ static int wps_process_pubkey(struct wps_data *wps, const u8 *pk,
 	if (wps->dh_pubkey_r == NULL)
 		return -1;
 
-	wpa_printf(MSG_DEBUG, "process pubkey start\n");
+	wpa_printf(MSG_DEBUG, "process pubkey start");
 
 	if (wps_derive_keys(wps) < 0) {
 		return -1;
 	}
 
-	wpa_printf(MSG_DEBUG, "process pubkey finish\n");
+	wpa_printf(MSG_DEBUG, "process pubkey finish");
 
 	return 0;
 }
@@ -1221,8 +1221,8 @@ static enum wps_process_res wps_process_wsc_start(struct wps_data *wps,
 	enum wps_process_res ret = WPS_CONTINUE;
 
 	wpa_printf(MSG_DEBUG,  "WPS: Received WSC_START");
-    bl_wifi_timer_disarm(&sm->wps_eapol_start_timer);
-    wps->state = SEND_M1;
+	bl_wifi_timer_stop(&sm->wps_eapol_start_timer);
+	wps->state = SEND_M1;
 	return ret;
 }
 
@@ -1395,6 +1395,13 @@ static enum wps_process_res wps_process_wsc_ack(struct wps_data *wps,
 			   "completed successfully");
 		wps_success_event(wps->wps);
 		wps->state = WPS_FINISHED;
+		res = WPS_DONE;
+		goto _out;
+	}
+
+	if (wps->state == WPS_FINISHED && !wps->wps->ap) {
+		wpa_printf(MSG_DEBUG,
+			   "WPS: Ignore trailing WSC_ACK after enrollee sent WSC_Done");
 		res = WPS_DONE;
 		goto _out;
 	}

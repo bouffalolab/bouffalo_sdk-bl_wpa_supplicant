@@ -101,8 +101,9 @@ static void wps_remove_pin(struct wps_uuid_pin *pin)
 static void wps_free_pins(struct dl_list *pins)
 {
 	struct wps_uuid_pin *pin, *prev;
-	dl_list_for_each_safe(pin, prev, pins, struct wps_uuid_pin, list);
-	wps_remove_pin(pin);
+
+	dl_list_for_each_safe(pin, prev, pins, struct wps_uuid_pin, list)
+		wps_remove_pin(pin);
 }
 
 #endif
@@ -287,6 +288,17 @@ static void wps_device_clone_data(struct wps_device_data *dst,
 int wps_device_store(struct wps_registrar *reg,
 		     struct wps_device_data *dev, const u8 *uuid)
 {
+#if defined(CONFIG_BL_SUPPLICANT_P2P)
+	/*
+	 * The BL P2P flow does not consume registrar device-cache queries.
+	 * Skip caching peer device data to keep group teardown stable.
+	 */
+	(void) reg;
+	(void) dev;
+	(void) uuid;
+	return 0;
+#endif
+
 	struct wps_registrar_device *d;
 
 	d = wps_device_get(reg, dev->mac_addr);
@@ -1366,6 +1378,16 @@ static int wps_get_dev_password(struct wps_data *wps)
 
 		pin = wps_registrar_get_pin(wps->wps->registrar, wps->uuid_e,
 					    &pin_len);
+#if defined(CONFIG_BL_SUPPLICANT_P2P)
+		if (pin == NULL && wps->wps->ap && wps->wps->ap_pin_len > 0) {
+			wpa_printf(MSG_INFO,
+				   "WPS: Falling back to locally configured AP PIN for "
+				   "Enrollee " MACSTR,
+				   MAC2STR(wps->mac_addr_e));
+			pin = wps->wps->ap_pin;
+			pin_len = wps->wps->ap_pin_len;
+		}
+#endif
 	}
 	if (pin == NULL) {
 		wpa_printf(MSG_DEBUG,  "WPS: No Device Password available for "

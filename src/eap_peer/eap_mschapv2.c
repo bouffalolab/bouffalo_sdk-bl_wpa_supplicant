@@ -123,7 +123,7 @@ eap_mschapv2_challenge_reply(
 	const u8 *identity, *password;
 	int pwhash;
 
-	wpa_printf(MSG_DEBUG, "EAP-MSCHAPV2: Generate Challenge Response\n");
+	wpa_printf(MSG_DEBUG, "EAP-MSCHAPV2: Generate Challenge Response");
 
 	identity = eap_get_config_identity(sm, &identity_len);
 	password = eap_get_config_password2(sm, &password_len, &pwhash);
@@ -324,13 +324,13 @@ eap_mschapv2_failure_txt(struct eap_sm *sm,
 		if (hex_len == PASSWD_CHANGE_CHAL_LEN * 2) {
 			if (hexstr2bin(pos, data->passwd_change_challenge,
 				       PASSWD_CHANGE_CHAL_LEN)) {
-				wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: invalid failure challenge\n");
+				wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: invalid failure challenge");
 			} else {
 				data->passwd_change_challenge_valid = 1;
 			}
 		} else {
 			wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: required challenge field "
-				  "was not present in failure message\n");
+				  "was not present in failure message");
 		}
 	}
 
@@ -349,7 +349,7 @@ eap_mschapv2_failure_txt(struct eap_sm *sm,
 	    data->passwd_change_version == 3 && config) {
 		if (config->new_password == NULL) {
 			wpa_printf(MSG_DEBUG, "EAP-MSCHAPV2: Password expired - "
-				  "password change reqired\n");
+				  "password change reqired");
 		}
 	} else if (retry == 1 && config) {
 		if (!config->mschapv2_retry)
@@ -507,13 +507,13 @@ eap_mschapv2_check_config(struct eap_sm *sm)
 
 	if (config->identity == NULL ||
 	    config->identity_len == 0) {
-		wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: idetity not configured\n");
+		wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: idetity not configured");
 		return -1;
 	}
 
 	if (config->password == NULL ||
 	    config->password_len == 0) {
-		wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: Password not configured\n");
+		wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: Password not configured");
 		return -1;
 	}
 
@@ -531,11 +531,11 @@ eap_mschapv2_check_mslen(struct eap_sm *sm, size_t len,
 
 	if (sm->workaround) {
 		wpa_printf(MSG_DEBUG, "EAP-MSCHAPV2: Workaround, ignore Invalid"
-			  " header len=%lu ms_len=%lu\n",
+			  " header len=%lu ms_len=%lu",
 			  (unsigned long)len, (unsigned long)ms_len);
 		return 0;
 	}
-	wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: Invalid header len=%lu ms_len=%lu\n",
+	wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: Invalid header len=%lu ms_len=%lu",
 		  (unsigned long)len, (unsigned long)ms_len);
 
 	return -1;
@@ -588,7 +588,7 @@ eap_mschapv2_process(struct eap_sm *sm, void *priv,
 	}
 
 	id = eap_get_id(reqData);
-	wpa_printf(MSG_DEBUG, "EAP-MSCHAPV2: RX identifier %d mschapv2_id %d\n",
+	wpa_printf(MSG_DEBUG, "EAP-MSCHAPV2: RX identifier %d mschapv2_id %d",
 		  id, ms->mschapv2_id);
 	switch (ms->op_code) {
 	case MSCHAPV2_OP_CHALLENGE:
@@ -600,7 +600,7 @@ eap_mschapv2_process(struct eap_sm *sm, void *priv,
 	case MSCHAPV2_OP_FAILURE:
 		return eap_mschapv2_failure(sm, data, ret, ms, len, id);
 	default:
-		wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: Unknow op code %d -ignored\n",
+		wpa_printf(MSG_ERROR, "EAP-MSCHAPV2: Unknow op code %d -ignored",
 			  ms->op_code);
 		return NULL;
 	}

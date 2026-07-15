@@ -78,16 +78,32 @@ static void wpa_pkt_free(void *opaque) {
 void wpa_sendto_wrapper(bool is_sta, void *buffer, u16 len,
                         struct bl_custom_tx_cfm *tx_cfm) {
   struct bl_custom_tx_cfm *cfm = NULL;
+  int ret;
   if (tx_cfm) {
     cfm = malloc(sizeof(struct bl_custom_tx_cfm));
     if (cfm == NULL) {
       printf("wpa sendto failed!\n");
+      if (tx_cfm->cb) {
+        tx_cfm->cb(tx_cfm->cb_arg, false);
+      }
       return;
     }
     memcpy(cfm, tx_cfm, sizeof(*cfm));
   }
 
-  wl80211_output_raw(is_sta ? WL80211_VIF_STA : WL80211_VIF_AP, buffer, len, 0, wpa_pkt_free, cfm);
+  ret = wl80211_output_raw(is_sta ? WL80211_VIF_STA : WL80211_VIF_AP,
+                           buffer, len, 0, wpa_pkt_free, cfm);
+  if (ret) {
+    wpa_printf(MSG_INFO,
+               "wl80211 raw tx failed: vif=%s len=%u ret=%d",
+               is_sta ? "sta" : "ap", len, ret);
+    if (ret == -1 && cfm) {
+      if (cfm->cb) {
+        cfm->cb(cfm->cb_arg, false);
+      }
+      free(cfm);
+    }
+  }
 }
 
 void wpa_deauthenticate(uint8_t sta_idx, u8 reason_code) {
@@ -195,21 +211,21 @@ bool wpa_deattach(void) {
 #define ARR_02X_6 "%02X-%02X-%02X-%02X-%02X-%02X"
 #define ARR_ASC_6(arr) arr[0], arr[1], arr[2], arr[3], arr[4], arr[5]
 static void dump_connect_parm(const wifi_connect_parm_t *parm) {
-  wpa_dbg(0, MSG_DEBUG, "---- BEGIN OF CONNECT PARM DUMP ----\r\n");
-  wpa_dbg(0, MSG_DEBUG, "vif_idx %u, sta_idx %u\r\n", parm->vif_idx,
+  wpa_dbg(0, MSG_DEBUG, "---- BEGIN OF CONNECT PARM DUMP ----");
+  wpa_dbg(0, MSG_DEBUG, "vif_idx %u, sta_idx %u", parm->vif_idx,
           parm->sta_idx);
-  wpa_dbg(0, MSG_DEBUG, "mac " ARR_02X_6 "\r\n", ARR_ASC_6(parm->mac));
-  wpa_dbg(0, MSG_DEBUG, "bssid " ARR_02X_6 "\r\n", ARR_ASC_6(parm->bssid));
+  wpa_dbg(0, MSG_DEBUG, "mac " ARR_02X_6 "", ARR_ASC_6(parm->mac));
+  wpa_dbg(0, MSG_DEBUG, "bssid " ARR_02X_6 "", ARR_ASC_6(parm->bssid));
   char buf[33] = {0};
   memcpy(buf, parm->ssid.ssid, parm->ssid.len);
-  wpa_dbg(0, MSG_DEBUG, "ssid %s\r\n", buf);
-  wpa_dbg(0, MSG_DEBUG, "proto %u\r\n", parm->proto);
-  wpa_dbg(0, MSG_DEBUG, "pairwise_cipher %u\r\n", parm->pairwise_cipher);
-  wpa_dbg(0, MSG_DEBUG, "group_cipher %u\r\n", parm->group_cipher);
-  wpa_dbg(0, MSG_DEBUG, "passphrase %s\r\n", parm->passphrase);
-  wpa_dbg(0, MSG_DEBUG, "pmf_required %d\r\n", parm->pmf_required);
-  wpa_dbg(0, MSG_DEBUG, "mgmt_group_cipher %u\r\n", parm->mgmt_group_cipher);
-  wpa_dbg(0, MSG_DEBUG, "---- END OF CONNECT PARM DUMP ----\r\n");
+  wpa_dbg(0, MSG_DEBUG, "ssid %s", buf);
+  wpa_dbg(0, MSG_DEBUG, "proto %u", parm->proto);
+  wpa_dbg(0, MSG_DEBUG, "pairwise_cipher %u", parm->pairwise_cipher);
+  wpa_dbg(0, MSG_DEBUG, "group_cipher %u", parm->group_cipher);
+  wpa_dbg(0, MSG_DEBUG, "passphrase %s", parm->passphrase);
+  wpa_dbg(0, MSG_DEBUG, "pmf_required %d", parm->pmf_required);
+  wpa_dbg(0, MSG_DEBUG, "mgmt_group_cipher %u", parm->mgmt_group_cipher);
+  wpa_dbg(0, MSG_DEBUG, "---- END OF CONNECT PARM DUMP ----");
 }
 #endif
 

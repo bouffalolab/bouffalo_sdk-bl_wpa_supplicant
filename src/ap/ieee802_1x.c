@@ -45,7 +45,7 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
 	}
 
 	if (len < sizeof(*hdr)) {
-		wpa_printf( MSG_DEBUG, "   too short IEEE 802.1X packet\n");
+		wpa_printf( MSG_DEBUG, "   too short IEEE 802.1X packet");
 		return;
 	}
 
@@ -55,7 +55,7 @@ void ieee802_1x_receive(struct hostapd_data *hapd, const u8 *sa, const u8 *buf,
 		   hdr->version, hdr->type, datalen);
 
 	if (len - sizeof(*hdr) < datalen) {
-		wpa_printf( MSG_DEBUG, "   frame too short for this IEEE 802.1X packet\n");
+		wpa_printf( MSG_DEBUG, "   frame too short for this IEEE 802.1X packet");
 		return;
 	}
 	if (len - sizeof(*hdr) > datalen) {

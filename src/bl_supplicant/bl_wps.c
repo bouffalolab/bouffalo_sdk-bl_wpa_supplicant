@@ -1,7 +1,7 @@
 #include "bl_wps.h"
+#include <stdio.h>
 #include <wps/wps.h>
 #include <wps/wps_i.h>
-#include <bl_wifi.h>
 #include <bl_supplicant/bl_wifi_driver.h>
 #include <rsn_supp/wpa.h>
 #include <rsn_supp/wpa_i.h>
@@ -14,7 +14,7 @@
 #include <crypto/dh_group5.h>
 #include <wifi_mgmr_ext.h>
 #include <semphr.h>
-#include <aos/yloop.h>
+#include <async_event.h>
 
 #define WPS_SM_EAPOL_VERSION 1
 
@@ -23,6 +23,79 @@ static int wifi_station_wps_deinit_(void);
 static int wps_dev_deinit_(struct wps_device_data *dev);
 
 static struct wps_sm *gWpsSm;
+
+static const char *wps_evq_name_(wps_evq_event_t event)
+{
+    switch (event) {
+        case WPS_EVQ_SUCCESS:
+            return "SUCCESS";
+        case WPS_EVQ_FAILURE:
+            return "FAILURE";
+        case WPS_EVQ_DISCONNECTED:
+            return "DISCONNECTED";
+        case WPS_EVQ_TIMEOUT:
+            return "TIMEOUT";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+static const char *wps_eap_code_name_(u8 code)
+{
+    switch (code) {
+        case EAP_CODE_REQUEST:
+            return "REQUEST";
+        case EAP_CODE_RESPONSE:
+            return "RESPONSE";
+        case EAP_CODE_SUCCESS:
+            return "SUCCESS";
+        case EAP_CODE_FAILURE:
+            return "FAILURE";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+static const char *wps_eap_type_name_(u8 type)
+{
+    switch (type) {
+        case EAP_TYPE_IDENTITY:
+            return "IDENTITY";
+        case EAP_TYPE_EXPANDED:
+            return "EXPANDED";
+        default:
+            return "OTHER";
+    }
+}
+
+static bool wps_is_p2p_client_flow_(void)
+{
+#if defined(CONFIG_BL_SUPPLICANT_P2P)
+    return wl80211_glb.p2p.role == WL80211_P2P_ROLE_CLIENT;
+#else
+    return false;
+#endif
+}
+
+static BaseType_t wps_event_queue_send_(struct wps_sm *sm, const wps_evq_msg_t *msg)
+{
+    if (sm == NULL || sm->event_queue == NULL || msg == NULL) {
+        return pdFAIL;
+    }
+
+    if (xPortIsInsideInterrupt()) {
+        BaseType_t task_woken = pdFALSE;
+        BaseType_t ret = xQueueSendFromISR(sm->event_queue, msg, &task_woken);
+
+        if (task_woken == pdTRUE) {
+            portYIELD_FROM_ISR(task_woken);
+        }
+
+        return ret;
+    }
+
+    return xQueueSend(sm->event_queue, msg, 0);
+}
 
 struct wps_sm *wps_sm_get(void)
 {
@@ -56,6 +129,9 @@ int wps_credential_save(u8 idx, u8 *ssid, u8 ssid_len, char *key, u8 key_len)
     sm->key_len[idx] = key_len;
 
     sm->ap_cred_cnt++;
+    wpa_printf(MSG_INFO,
+               "WPS: credential saved idx=%u ssid=%.*s key_len=%u total_creds=%u",
+               idx, (int) ssid_len, ssid, key_len, sm->ap_cred_cnt);
 
     return 0;
 }
@@ -72,7 +148,7 @@ static void wps_build_ic_appie_wps_pr_(void)
     struct wpabuf *wps_ie;
     struct wps_sm *sm = gWpsSm;
 
-    wpa_printf(MSG_DEBUG, "wps build: wps pr\n");
+    wpa_printf(MSG_DEBUG, "wps build: wps pr");
 
     if (wps_get_type() == WPS_TYPE_PBC) {
         wps_ie = (struct wpabuf *)wps_build_probe_req_ie(DEV_PW_PUSHBUTTON,
@@ -107,7 +183,7 @@ static void wps_build_ic_appie_wps_ar_(void)
     struct wps_sm *sm = gWpsSm;
     struct wpabuf *buf = (struct wpabuf *)wps_build_assoc_req_ie(WPS_REQ_ENROLLEE);
 
-    wpa_printf(MSG_DEBUG, "wps build: wps ar\n");
+    wpa_printf(MSG_DEBUG, "wps build: wps ar");
 
     if (buf) {
         memcpy(sm->wps_ie_association_request, wpabuf_head(buf), buf->used);
@@ -147,6 +223,9 @@ static wps_scan_result_t wps_scan_(void)
         wifi_mgmr_scan(scan_sem, wps_scan_complete_);
         xSemaphoreTake(scan_sem, portMAX_DELAY);
 
+        wpa_printf(MSG_INFO, "WPS: scan round complete, discover_ssid_cnt=%u",
+                   sm->discover_ssid_cnt);
+
         if (sm->discover_ssid_cnt == 1) {
             result = WPS_SCAN_TARGET_FOUND;
             goto exit;
@@ -169,17 +248,27 @@ static void notify_user_(bl_wps_event_t event, void *payload)
 
     if (sm->cfg.event_cb) {
         sm->cfg.event_cb(event, payload, sm->cfg.event_cb_arg);
+    } else if (payload != NULL) {
+        vPortFree(payload);
     }
 }
 
-static void wifi_event_cb_(async_input_event_t *event, void *private_data)
+static void wifi_event_cb_(async_input_event_t event, void *private_data)
 {
     struct wps_sm *sm = (struct wps_sm *)private_data;
     wps_evq_msg_t msg = {};
 
+    if (event == NULL || sm == NULL) {
+        return;
+    }
+
     if (event->code == CODE_WIFI_ON_DISCONNECT) {
+        wpa_printf(MSG_INFO,
+                   "WPS: async disconnect observed state=%d creds=%u p2p_client=%d",
+                   sm->wps ? sm->wps->state : -1, sm->ap_cred_cnt,
+                   wps_is_p2p_client_flow_());
         msg.event = WPS_EVQ_DISCONNECTED;
-        xQueueSend(sm->event_queue, &msg, portMAX_DELAY);
+        wps_event_queue_send_(sm, &msg);
     }
 }
 
@@ -187,7 +276,7 @@ static void wps_timeout_cb_(TimerHandle_t xTimer)
 {
     struct wps_sm *sm = gWpsSm;
     wps_evq_msg_t msg = { .event = WPS_EVQ_TIMEOUT };
-    xQueueSend(sm->event_queue, &msg, portMAX_DELAY);
+    wps_event_queue_send_(sm, &msg);
 }
 
 static void wps_eapol_start_timer_cb_(void *arg)
@@ -195,17 +284,48 @@ static void wps_eapol_start_timer_cb_(void *arg)
     wps_tx_start_();
 }
 
+static uint16_t wps_channel_to_freq_(u8 channel)
+{
+    if (channel == 0) {
+        return 0;
+    }
+
+    if (channel == 14) {
+        return 2484;
+    }
+
+    if (channel <= 13) {
+        return (uint16_t) (2407 + channel * 5);
+    }
+
+    return (uint16_t) (5000 + channel * 5);
+}
+
 static void wps_success_timer_cb_(TimerHandle_t xTimer)
 {
+    struct wps_sm *sm = gWpsSm;
+
+    if (sm != NULL) {
+        wpa_printf(MSG_INFO,
+                   "WPS: success timer fired state=%d creds=%u p2p_client=%d",
+                   sm->wps ? sm->wps->state : -1, sm->ap_cred_cnt,
+                   wps_is_p2p_client_flow_());
+    }
     wifi_mgmr_sta_disconnect();
 }
 
-static void connect_ap_wps_neg_(u8 *ssid, u8 ssid_len, u8 *bssid)
+static void connect_ap_wps_neg_(u8 *ssid, u8 ssid_len, u8 *bssid, u8 channel)
 {
     char ssid_str[33] = {};
     wifi_interface_t wifi_interface = wifi_mgmr_sta_enable();
     struct ap_connect_adv ext_param;
+    uint16_t freq = wps_channel_to_freq_(channel);
     memcpy(ssid_str, ssid, ssid_len);
+
+    wpa_printf(MSG_INFO,
+               "WPS: start connect to target SSID %s (" MACSTR
+               ") channel=%u freq=%u",
+               ssid_str, MAC2STR(bssid), channel, freq);
 
     wifi_mgmr_sta_autoconnect_disable();
 
@@ -213,6 +333,7 @@ static void connect_ap_wps_neg_(u8 *ssid, u8 ssid_len, u8 *bssid)
     ext_param.ap_info.type = AP_INFO_TYPE_SUGGEST;
     ext_param.ap_info.time_to_live = 5;
     ext_param.ap_info.bssid = bssid;
+    ext_param.ap_info.freq = freq;
     // Disabling DHCP is required
     // ext_param.ap_info.use_dhcp = 0;
     wifi_mgmr_sta_connect_ext(wifi_interface, ssid_str, NULL, &ext_param);
@@ -233,6 +354,156 @@ static void prepare_stop_(void)
     wifi_mgmr_sta_autoconnect_enable();
 }
 
+/*
+ * P2P client WPS succeeded: mark success and clear the WPS IEs/callback so the
+ * follow-up association is a plain WPA2-PSK connect (no WPS IE). The actual
+ * (re)connect with the obtained credentials is done by wps_start_p2p_client_wpa_().
+ */
+static void prepare_success_clear_wps_(void)
+{
+    wps_set_status(WPS_STATUS_SUCCESS);
+    wl80211_supplicant_set_appie_internal(0xff, WIFI_APPIE_WPS_PR, NULL, 0, true);
+    wl80211_supplicant_set_appie_internal(0xff, WIFI_APPIE_WPS_AR, NULL, 0, true);
+    wl80211_supplicant_set_wps_cb_internal(NULL);
+}
+
+static bool wps_start_p2p_client_wpa_(struct wps_sm *sm)
+{
+    char ssid_str[33] = {0};
+    char key_str[65] = {0};
+    char *passphrase = NULL;
+    wifi_interface_t wifi_interface;
+    struct ap_connect_adv ext_param;
+    uint16_t freq;
+    uint8_t key_len;
+
+    if (sm == NULL || sm->ssid_len[0] == 0 || sm->ssid_len[0] > 32) {
+        return false;
+    }
+
+    key_len = sm->key_len[0];
+    if (key_len == 0 || key_len > 64) {
+        return false;
+    }
+
+    os_memcpy(ssid_str, sm->ssid[0], sm->ssid_len[0]);
+    os_memcpy(key_str, sm->key[0], key_len);
+    key_str[key_len] = '\0';
+
+    memset(&ext_param, 0, sizeof(ext_param));
+    ext_param.ap_info.type = AP_INFO_TYPE_SUGGEST;
+    ext_param.ap_info.time_to_live = 5;
+    ext_param.ap_info.bssid = sm->bssid;
+    freq = wps_channel_to_freq_(sm->channel);
+    ext_param.ap_info.freq = freq;
+
+    /*
+     * WPS may deliver either an ASCII passphrase (8..63 chars, or 5 for WEP) or
+     * a 64-hex-digit PSK. wifi_mgmr_sta_connect_ext() takes the passphrase via
+     * its 'passphr' argument and the 64-char PSK via ext_param.psk.
+     */
+    if (key_len == 64) {
+        ext_param.psk = key_str;
+    } else {
+        passphrase = key_str;
+    }
+
+    /*
+     * The GO (e.g. an Android phone) deauthenticates the enrollee right after
+     * WSC_Done and expects it to come back with a fresh WPA2-PSK association.
+     * Reusing the WPS provisioning link for the 4-way handshake therefore fails
+     * (the GO has already torn it down -> reason 23). Tear down the WPS link and
+     * reconnect with the credentials obtained from WPS instead.
+     */
+    wifi_mgmr_sta_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    wifi_interface = wifi_mgmr_sta_enable();
+
+    /*
+     * Tearing down the WPS link above resets the P2P role to IDLE
+     * (wl80211_p2p_mark_group_removed() in the disconnect path). Re-assert the
+     * CLIENT role before reconnecting so the connection-complete handler keeps
+     * the CLIENT group state and wifi_mgmr force-enables the DHCP client for
+     * the P2P client (otherwise no IP is obtained from the GO's dhcpd).
+     */
+#if defined(CONFIG_WL80211_P2P)
+    wl80211_p2p_set_role(WL80211_P2P_ROLE_CLIENT);
+#endif
+
+    wl80211_printf("WPS P2P client: reconnect ssid=%s freq=%u key_len=%u\r\n",
+                   ssid_str, freq, key_len);
+
+    if (wifi_mgmr_sta_connect_ext(wifi_interface, ssid_str, passphrase,
+                                  &ext_param) != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool wps_ensure_p2p_client_wpa_started_(struct wps_sm *sm,
+                                               const char *reason)
+{
+#if defined(CONFIG_BL_SUPPLICANT_P2P)
+    (void)reason;
+
+    if (!wps_is_p2p_client_flow_()) {
+        return true;
+    }
+
+    if (sm == NULL) {
+        return false;
+    }
+
+    if (sm->p2p_client_wpa_started) {
+        return true;
+    }
+
+    if (!wps_start_p2p_client_wpa_(sm)) {
+        return false;
+    }
+
+    sm->p2p_client_wpa_started = true;
+    return true;
+#else
+    (void)sm;
+    (void)reason;
+    return true;
+#endif
+}
+
+static bool notify_complete_(struct wps_sm *sm)
+{
+    bl_wps_ap_credential_t *creds;
+    size_t sz;
+
+    if (sm == NULL || sm->wps == NULL || sm->wps->state != WPS_FINISHED ||
+        sm->ap_cred_cnt == 0) {
+        return false;
+    }
+
+    sz = sizeof(*creds) + sm->ap_cred_cnt * sizeof(bl_wps_ap_credential_item_t);
+    creds = pvPortMalloc(sz);
+    if (creds == NULL) {
+        return false;
+    }
+
+    memset(creds, 0, sz);
+    creds->cnt = sm->ap_cred_cnt;
+    for (size_t i = 0; i < sm->ap_cred_cnt; ++i) {
+        bl_wps_ap_credential_item_t *cred = &creds->creds[i];
+
+        memcpy(cred->bssid, sm->bssid, ETH_ALEN);
+        memcpy(cred->ssid, sm->ssid[i], sm->ssid_len[i]);
+        cred->ssid_len = sm->ssid_len[i];
+        memcpy(cred->passphrase, sm->key[i], sm->key_len[i]);
+    }
+
+    notify_user_(BL_WPS_EVENT_COMPLETE, creds);
+    return true;
+}
+
 static void wps_task_(void *pvParameters)
 {
     struct wps_sm *sm = gWpsSm;
@@ -243,6 +514,7 @@ static void wps_task_(void *pvParameters)
         // only pin & ap_cred is allocated directly by calling FreeRTOS API, as they are exported
         bl_wps_pin_t *pin = pvPortMalloc(sizeof(*pin));
         if (pin) {
+            memset(pin, 0, sizeof(*pin));
             memcpy(pin->pin, sm->wps->dev_password, 8);
             notify_user_(BL_WPS_EVENT_PIN, pin);
         }
@@ -253,14 +525,15 @@ static void wps_task_(void *pvParameters)
 
     wps_build_public_key(sm->wps, NULL, WPS_CALC_KEY_PRE_CALC);
 
-    aos_register_event_filter(EV_WIFI, wifi_event_cb_, sm);
+    async_register_event_filter(EV_WIFI, wifi_event_cb_, sm);
 
     wps_scan_result_t scan_result = wps_scan_();
 
     switch (scan_result) {
     case WPS_SCAN_TARGET_FOUND:
         wps_set_status(WPS_STATUS_PENDING);
-        connect_ap_wps_neg_(sm->ssid_neg, sm->ssid_neg_len, sm->bssid);
+        connect_ap_wps_neg_(sm->ssid_neg, sm->ssid_neg_len, sm->bssid,
+                            sm->channel);
         break;
     case WPS_SCAN_SESSION_OVERLAP:
         notify_user_(BL_WPS_EVENT_SESSION_OVERLAP, 0);
@@ -291,8 +564,50 @@ static void wps_task_(void *pvParameters)
             break;
         }
 
+        wpa_printf(MSG_INFO,
+                   "WPS: event %s state=%d creds=%u status=%d p2p_client=%d",
+                   wps_evq_name_(msg.event), sm->wps ? sm->wps->state : -1,
+                   sm->ap_cred_cnt, wps_get_status(),
+                   wps_is_p2p_client_flow_());
+
         switch (msg.event) {
         case WPS_EVQ_SUCCESS:
+            if (wps_is_p2p_client_flow_()) {
+                if (sm->timeout_timer) {
+                    xTimerStop(sm->timeout_timer, portMAX_DELAY);
+                    xTimerDelete(sm->timeout_timer, portMAX_DELAY);
+                    sm->timeout_timer = NULL;
+                }
+                if (sm->success_cb_timer) {
+                    xTimerStop(sm->success_cb_timer, portMAX_DELAY);
+                    xTimerDelete(sm->success_cb_timer, portMAX_DELAY);
+                    sm->success_cb_timer = NULL;
+                }
+
+                /* Clear WPS IEs before delivering creds / reconnecting so the
+                 * follow-up association is a plain WPA2-PSK connect. */
+                prepare_success_clear_wps_();
+
+                /* Hand the obtained credentials to the P2P/user layer. */
+                if (!notify_complete_(sm)) {
+                    notify_user_(BL_WPS_EVENT_FAILURE, 0);
+                    exit_loop = true;
+                    break;
+                }
+
+                /*
+                 * Reconnect with the WPA2 credentials obtained from WPS. The GO
+                 * has (or is about to) deauthenticate the WPS link, so a fresh
+                 * association is required for the 4-way handshake.
+                 */
+                wl80211_printf("WPS P2P client success: reconnect with WPA2 credentials\r\n");
+                if (!wps_ensure_p2p_client_wpa_started_(sm, "success event")) {
+                    notify_user_(BL_WPS_EVENT_FAILURE, 0);
+                }
+                exit_loop = true;
+                break;
+            }
+
             sm->success_cb_timer = xTimerCreateStatic("wps success", pdMS_TO_TICKS(1000), pdFALSE, 0, wps_success_timer_cb_, &sm->success_cb_timer_buffer);
             xTimerStart(sm->success_cb_timer, portMAX_DELAY);
             break;
@@ -311,22 +626,25 @@ static void wps_task_(void *pvParameters)
                 sm->success_cb_timer = NULL;
             }
             if (sm->wps->state == WPS_FINISHED && sm->ap_cred_cnt > 0) {
-                bl_wps_ap_credential_t *creds;
-                size_t sz = sizeof(*creds) + sm->ap_cred_cnt * sizeof(bl_wps_ap_credential_item_t);
-                prepare_stop_();
-                if ((creds = pvPortMalloc(sz))) {
-                    memset(creds, 0, sz);
-                    creds->cnt = sm->ap_cred_cnt;
-                    for (size_t i = 0; i < sm->ap_cred_cnt; ++i) {
-                        bl_wps_ap_credential_item_t *cred = &creds->creds[i];
-                        memcpy(cred->bssid, sm->bssid, ETH_ALEN);
-                        memcpy(cred->ssid, sm->ssid[i], sm->ssid_len[i]);
-                        cred->ssid_len = sm->ssid_len[i];
-                        memcpy(cred->passphrase, sm->key[i], sm->key_len[i]);
+                if (wps_is_p2p_client_flow_()) {
+                    /*
+                     * GO deauthenticated us after WSC_Done (expected). Treat it
+                     * as success: clear WPS IEs, deliver creds and reconnect
+                     * with WPA2 rather than reporting a failure. The reconnect
+                     * is idempotent vs the success-event path.
+                     */
+                    prepare_success_clear_wps_();
+                    if (!notify_complete_(sm)) {
+                        notify_user_(BL_WPS_EVENT_FAILURE, 0);
+                    } else if (!wps_ensure_p2p_client_wpa_started_(
+                                   sm, "disconnect after done")) {
+                        notify_user_(BL_WPS_EVENT_FAILURE, 0);
                     }
-                    notify_user_(BL_WPS_EVENT_COMPLETE, creds);
                 } else {
-                    notify_user_(BL_WPS_EVENT_FAILURE, 0);
+                    prepare_stop_();
+                    if (!notify_complete_(sm)) {
+                        notify_user_(BL_WPS_EVENT_FAILURE, 0);
+                    }
                 }
             } else {
                 prepare_stop_();
@@ -383,7 +701,7 @@ static int wps_set_factory_info_(const struct bl_wps_config *config)
         memcpy(factory_info->device_name, config->factory_info.device_name, WPS_MAX_DEVICE_NAME_LEN - 1);
     }
 
-    wpa_printf(MSG_INFO, "manufacturer: %s, model number: %s, model name: %s, device name: %s\n", factory_info->manufacturer,
+    wpa_printf(MSG_INFO, "manufacturer: %s, model number: %s, model name: %s, device name: %s", factory_info->manufacturer,
                factory_info->model_number, factory_info->model_name, factory_info->device_name);
 
     return 0;
@@ -524,15 +842,19 @@ static struct wps_data *wps_init_(void)
             return NULL;
         }
 
-        spin = wps_generate_pin();
-        sprintf((char *)data->dev_password, "%08lu", spin);
+        if (sm->cfg.pin && wps_pin_str_valid(sm->cfg.pin)) {
+            memcpy(data->dev_password, sm->cfg.pin, data->dev_password_len);
+        } else {
+            spin = wps_generate_pin();
+            sprintf((char *)data->dev_password, "%08lu", spin);
+        }
         wpa_hexdump_key(MSG_DEBUG, "WPS: AP PIN dev_password",
                         data->dev_password, data->dev_password_len);
         do {
             char tmpp[9];
             os_bzero(tmpp, 9);
             memcpy(tmpp, data->dev_password, 8);
-            wpa_printf(MSG_DEBUG, "WPS PIN [%s]\n", tmpp);
+            wpa_printf(MSG_DEBUG, "WPS PIN [%s]", tmpp);
         } while (0);
     } else if (wps_get_type() == WPS_TYPE_PBC) {
         data->pbc = 1;
@@ -565,23 +887,91 @@ static struct wps_data *wps_init_(void)
 static bool wps_parse_scan_result(struct wps_scan_ie *scan)
 {
     struct wps_sm *sm = gWpsSm;
+    struct wpabuf *buf;
+    bool matched = false;
+    bool target_ssid_match = false;
+    u16 dev_password_id = 0xffff;
 #ifdef WPS_DEBUG
     char tmp[33];
 
     os_bzero(tmp, sizeof(tmp));
     strncpy(tmp, (char *)scan->ssid, scan->ssid_len);
-    wpa_printf(MSG_DEBUG, "wps parse scan: %s\n", tmp);
+    wpa_printf(MSG_DEBUG, "wps parse scan: %s", tmp);
 #endif
 
     if (wps_get_type() == WPS_TYPE_DISABLE || wps_get_status() != WPS_STATUS_SCANNING) {
         return false;
     }
 
-    struct wpabuf *buf = wpabuf_alloc_copy(scan->wps + 6, scan->wps[1] - 4);
+    if (sm->cfg.target_ssid != NULL && sm->cfg.target_ssid[0] != '\0') {
+        size_t target_ssid_len = os_strlen(sm->cfg.target_ssid);
+
+        if (target_ssid_len != scan->ssid_len ||
+            os_memcmp(scan->ssid, sm->cfg.target_ssid, target_ssid_len) != 0) {
+            return false;
+        }
+
+        target_ssid_match = true;
+    }
+
+    buf = wpabuf_alloc_copy(scan->wps + 6, scan->wps[1] - 4);
+    if (buf == NULL) {
+        return false;
+    }
 
     // TODO: check if AP mode matches current setting
-    if (wps_is_selected_pbc_registrar(buf, scan->bssid)
-            || wps_is_selected_pin_registrar(buf, scan->bssid)) {
+    if (wps_get_type() == WPS_TYPE_PBC) {
+        matched = wps_is_selected_pbc_registrar(buf, scan->bssid);
+    } else {
+        matched = wps_is_selected_pin_registrar(buf, scan->bssid);
+    }
+
+    if (!matched && sm->cfg.target_ssid != NULL && sm->cfg.target_ssid[0] != '\0') {
+        struct wps_parse_attr attr;
+        bool parsed = false;
+
+        os_memset(&attr, 0, sizeof(attr));
+        if (wps_parse_msg(buf, &attr) == 0) {
+            parsed = true;
+        }
+
+        if (parsed && attr.dev_password_id != NULL) {
+            dev_password_id = WPA_GET_BE16(attr.dev_password_id);
+
+            if ((wps_get_type() == WPS_TYPE_PBC &&
+                 dev_password_id == DEV_PW_PUSHBUTTON) ||
+                (wps_get_type() == WPS_TYPE_PIN &&
+                 dev_password_id != DEV_PW_PUSHBUTTON)) {
+                matched = true;
+                wpa_printf(MSG_INFO,
+                           "WPS: accepting target SSID %.*s without Selected Registrar flag",
+                           (int)scan->ssid_len, scan->ssid);
+            }
+        }
+
+        if (!matched && parsed && target_ssid_match) {
+            if (wps_get_type() == WPS_TYPE_PBC) {
+                matched = true;
+                wpa_printf(MSG_INFO,
+                           "WPS: accepting target SSID %.*s based on explicit target match while PBC registrar advertisement is not updated yet",
+                           (int)scan->ssid_len, scan->ssid);
+            } else if (wps_get_type() == WPS_TYPE_PIN) {
+                matched = true;
+                wpa_printf(MSG_INFO,
+                           "WPS: accepting target SSID %.*s based on explicit target match while PIN registrar advertisement is not updated yet",
+                           (int)scan->ssid_len, scan->ssid);
+            }
+        }
+    }
+
+    if (target_ssid_match) {
+        wpa_printf(MSG_INFO,
+                   "WPS: target candidate %.*s (" MACSTR ") matched=%d dev_password_id=0x%04x chan=%u",
+                   (int)scan->ssid_len, scan->ssid, MAC2STR(scan->bssid),
+                   matched, dev_password_id, scan->chan);
+    }
+
+    if (matched) {
         wpabuf_free(buf);
 
         if (sm->is_wps_scan == false) {
@@ -604,6 +994,10 @@ static bool wps_parse_scan_result(struct wps_scan_ie *scan)
         } else {
         }
         wpa_printf(MSG_DEBUG, "wps discover [%s]", (char *)sm->ssid_neg);
+        wpa_printf(MSG_INFO,
+                   "WPS: selected target SSID %.*s (" MACSTR "), discover_ssid_cnt=%u",
+                   (int)scan->ssid_len, scan->ssid, MAC2STR(sm->bssid),
+                   sm->discover_ssid_cnt);
         sm->scan_cnt = 0;
 
         sm->channel = scan->chan;
@@ -631,6 +1025,9 @@ static int wps_stop_process(void)
     os_bzero(sm->ssid, sizeof(sm->ssid));
     os_bzero(sm->ssid_len, sizeof(sm->ssid_len));
     sm->ap_cred_cnt = 0;
+#if defined(CONFIG_BL_SUPPLICANT_P2P)
+    sm->p2p_client_wpa_started = false;
+#endif
 
 #if 0
     esp_wifi_disarm_sta_connection_timer_internal();
@@ -670,13 +1067,20 @@ static int wps_finish(void)
 #endif
 
         wpa_printf(MSG_DEBUG, "wps finished------>");
+        wpa_printf(MSG_INFO,
+                   "WPS: finish success state=%d creds=%u p2p_client=%d",
+                   sm->wps->state, sm->ap_cred_cnt,
+                   wps_is_p2p_client_flow_());
         wps_set_status(WPS_STATUS_SUCCESS);
         /* ets_timer_disarm(&sm->wps_timeout_timer); */
         /* ets_timer_disarm(&sm->wps_msg_timeout_timer); */
 
         if (sm->ap_cred_cnt > 0) {
             wps_evq_msg_t msg = { .event = WPS_EVQ_SUCCESS };
-            xQueueSend(sm->event_queue, &msg, portMAX_DELAY);
+            wpa_printf(MSG_INFO,
+                       "WPS: queue success event state=%d creds=%u",
+                       sm->wps->state, sm->ap_cred_cnt);
+            wps_event_queue_send_(sm, &msg);
 #if 0
             memset(config, 0x00, sizeof(wifi_sta_config_t));
             memcpy(config->sta.ssid, sm->ssid[0], sm->ssid_len[0]);
@@ -697,6 +1101,8 @@ static int wps_finish(void)
         ret = 0;
     } else {
         wpa_printf(MSG_ERROR, "wps failed----->");
+        wpa_printf(MSG_INFO, "WPS: finish failure state=%d creds=%u",
+                   sm->wps->state, sm->ap_cred_cnt);
 
         ret = wps_stop_process();
     }
@@ -903,6 +1309,10 @@ static int wps_process_wps_mX_req_(u8 *ubuf, int len, enum wps_process_res *res)
 
     if (res) {
         *res = wps_enrollee_process_msg(sm->wps, expd->opcode, wps_buf);
+        wpa_printf(MSG_INFO,
+                   "WPS: processed opcode=%u result=%d state=%d creds=%u",
+                   expd->opcode, *res, sm->wps ? sm->wps->state : -1,
+                   sm->ap_cred_cnt);
     } else {
         wps_enrollee_process_msg(sm->wps, expd->opcode, wps_buf);
     }
@@ -1011,7 +1421,7 @@ static int wps_sm_rx_eapol_(u8 *src_addr, u8 *buf, u32 len)
     struct eap_hdr *ehdr;
     u8 *tmp;
     u8 eap_code;
-    u8 eap_type;
+    u8 eap_type = 0;
     int ret = -1;
     enum wps_process_res res = WPS_DONE;
 
@@ -1083,6 +1493,14 @@ static int wps_sm_rx_eapol_(u8 *src_addr, u8 *buf, u32 len)
     }
 
     eap_code = ehdr->code;
+    if (eap_code == EAP_CODE_REQUEST) {
+        eap_type = ((u8 *) ehdr)[sizeof(*ehdr)];
+    }
+    wpa_printf(MSG_INFO,
+               "WPS: RX EAPOL src=" MACSTR " code=%s(%u) type=%s(%u) id=%u plen=%u state=%d creds=%u",
+               MAC2STR(src_addr), wps_eap_code_name_(eap_code), eap_code,
+               wps_eap_type_name_(eap_type), eap_type, ehdr->identifier,
+               plen, sm->wps ? sm->wps->state : -1, sm->ap_cred_cnt);
     switch (eap_code) {
     case EAP_CODE_SUCCESS:
         wpa_printf(MSG_DEBUG, "error: receive eapol success frame!");
@@ -1102,10 +1520,10 @@ static int wps_sm_rx_eapol_(u8 *src_addr, u8 *buf, u32 len)
         case EAP_TYPE_IDENTITY:
             wpa_printf(MSG_DEBUG, "=========identity===========");
             sm->current_identifier = ehdr->identifier;
-            bl_wifi_timer_disarm(&sm->wps_eapol_start_timer);
+            bl_wifi_timer_stop(&sm->wps_eapol_start_timer);
             wpa_printf(MSG_DEBUG,  "WPS: Build EAP Identity.");
             ret = wps_send_eap_identity_rsp_(ehdr->identifier);
-            bl_wifi_timer_arm(&sm->wps_eapol_start_timer, 3000, 0);
+            bl_wifi_timer_start(&sm->wps_eapol_start_timer, 3000);
             break;
         case EAP_TYPE_EXPANDED:
             wpa_printf(MSG_DEBUG, "=========expanded plen[%ld], %d===========", plen, sizeof(*ehdr));
@@ -1118,7 +1536,21 @@ static int wps_sm_rx_eapol_(u8 *src_addr, u8 *buf, u32 len)
 
             tmp = (u8 *)(ehdr + 1) + 1;
             ret = wps_process_wps_mX_req_(tmp, plen - sizeof(*ehdr) - 1, &res);
-            if (ret == 0 && res != WPS_FAILURE && res != WPS_IGNORE && res != WPS_FRAGMENT) {
+            if (ret == 0 && res == WPS_DONE) {
+                /*
+                 * Credentials are already stored in sm->ssid/sm->key here. Defer
+                 * the WPA2 (re)connect to the WPS task context (success /
+                 * disconnect event handler) instead of issuing it from this
+                 * EAPOL RX path, which would synchronously call into TASK_MM.
+                 *
+                 * The final WSC_Done request from the registrar does not
+                 * require an enrollee reply. Keep waiting for the trailing
+                 * EAP-Failure that finalizes WPS instead of treating the lack
+                 * of a response payload as an error.
+                 */
+                ret = 0;
+            } else if (ret == 0 && res != WPS_FAILURE && res != WPS_IGNORE &&
+                       res != WPS_FRAGMENT) {
                 ret = wps_send_wps_mX_rsp_(ehdr->identifier);
                 if (ret == 0) {
                     wpa_printf(MSG_DEBUG, "sm->wps->state = %d", sm->wps->state);
@@ -1133,6 +1565,10 @@ static int wps_sm_rx_eapol_(u8 *src_addr, u8 *buf, u32 len)
             } else {
                 ret = -1;
             }
+            wpa_printf(MSG_INFO,
+                       "WPS: expanded handled id=%u ret=%d res=%d next_state=%d creds=%u",
+                       ehdr->identifier, ret, res,
+                       sm->wps ? sm->wps->state : -1, sm->ap_cred_cnt);
             break;
         default:
             break;
@@ -1143,6 +1579,9 @@ static int wps_sm_rx_eapol_(u8 *src_addr, u8 *buf, u32 len)
         break;
     }
 out:
+    wpa_printf(MSG_INFO,
+               "WPS: RX done ret=%d res=%d state=%d creds=%u",
+               ret, res, sm->wps ? sm->wps->state : -1, sm->ap_cred_cnt);
     if (ret != 0 || res == WPS_FAILURE) {
 #if 0
         wifi_event_sta_wps_fail_reason_t reason_code = WPS_FAIL_REASON_NORMAL;
@@ -1156,7 +1595,7 @@ out:
         wpa_printf(MSG_DEBUG, "wpa rx eapol internal: fail ret=%d", ret);
         wps_set_status(WPS_STATUS_DISABLE);
         wps_evq_msg_t msg = { .event = WPS_EVQ_FAILURE };
-        xQueueSend(sm->event_queue, &msg, portMAX_DELAY);
+        wps_event_queue_send_(sm, &msg);
         return ret;
     }
 
@@ -1190,7 +1629,7 @@ static int wps_tx_start_(void)
     wpa_sm_ether_send(sm->ownaddr, bssid, ETH_P_EAPOL, buf, len);
     wpa_sm_free_eapol(buf);
 
-    bl_wifi_timer_arm(&sm->wps_eapol_start_timer, 3000, 0);
+    bl_wifi_timer_start(&sm->wps_eapol_start_timer, 3000);
 
     return 0;
 }
@@ -1254,7 +1693,7 @@ static int wifi_station_wps_init_(void)
 
     wpa_printf(MSG_DEBUG, "wifi sta wps init");
 
-    bl_wifi_mac_addr_get(sm->ownaddr);
+    wifi_mgmr_sta_mac_get(sm->ownaddr);
 
     sm->discover_ssid_cnt = 0;
     sm->ignore_sel_reg = false;
@@ -1304,7 +1743,7 @@ static int wifi_station_wps_deinit_(void)
         return -1;
     }
 
-    aos_unregister_event_filter(EV_WIFI, wifi_event_cb_, sm);
+    async_unregister_event_filter(EV_WIFI, wifi_event_cb_, sm);
 
     if (sm->event_queue) {
         vQueueDelete(sm->event_queue);
@@ -1336,8 +1775,13 @@ bl_wps_err_t bl_wifi_wps_start(const struct bl_wps_config *config)
     bl_wps_err_t ret = BL_WPS_ERR_OK;
     int wifi_state = 0;
 
+    if (config == NULL) {
+        ret = BL_WPS_ERR_WIFI_STATE;
+        goto ret;
+    }
+
     if (sm) {
-        wpa_printf(MSG_ERROR, "wps context already created\n");
+        wpa_printf(MSG_ERROR, "wps context already created");
         ret = BL_WPS_ERR_DUPLICATE_INSTANCE;
         goto ret;
     }
@@ -1355,9 +1799,12 @@ bl_wps_err_t bl_wifi_wps_start(const struct bl_wps_config *config)
 
     if (!(sm->event_queue = xQueueCreate(WPS_EVENT_QUEUE_CAPACITY, sizeof(wps_evq_msg_t)))) {
         ret = BL_WPS_ERR_MEMORY;
+        os_free(sm);
         goto ret;
     }
     sm->cfg.type = config->type;
+    sm->cfg.pin = config->pin;
+    sm->cfg.target_ssid = config->target_ssid;
     sm->cfg.event_cb = config->event_cb;
     sm->cfg.event_cb_arg = config->event_cb_arg;
 
@@ -1377,8 +1824,7 @@ bl_wps_err_t bl_wifi_wps_start(const struct bl_wps_config *config)
 
 err:
     wps_set_status(WPS_STATUS_DISABLE);
-    vPortFree(sm);
-    gWpsSm = NULL;
+    wifi_station_wps_deinit_();
 ret:
     return ret;
 }

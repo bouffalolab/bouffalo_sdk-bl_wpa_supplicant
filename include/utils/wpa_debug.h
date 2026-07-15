@@ -60,7 +60,7 @@ void wpa_debug_print_timestamp(void);
  *
  * Note: New line '\n' is added to the end of the text when printing to stdout.
  */
-#define wpa_printf(level, fmt, ...) printf("\r\n[wpa] " fmt, ##__VA_ARGS__)
+#define wpa_printf(level, fmt, ...) printf("[wpa] " fmt "\n", ##__VA_ARGS__)
 #define wpa_dbg(ctx, level, fmt, ...) wpa_printf(level, fmt, ##__VA_ARGS__)
 
 void wpa_dump_mem(char* desc, uint8_t *addr, uint16_t len);

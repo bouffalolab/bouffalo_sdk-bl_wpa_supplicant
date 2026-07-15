@@ -6,6 +6,7 @@
 typedef enum {
     BL_WPS_EVENT_COMPLETE,
     BL_WPS_EVENT_PIN,
+    BL_WPS_EVENT_REG_SUCCESS,
     BL_WPS_EVENT_FAILURE,
     BL_WPS_EVENT_TIMEOUT,
     BL_WPS_EVENT_SESSION_OVERLAP,
@@ -51,6 +52,8 @@ typedef struct {
 
 typedef struct bl_wps_config {
     wps_type_t type;
+    const char *pin;
+    const char *target_ssid;
     wps_factory_information_t factory_info;
     wps_event_callback_t event_cb;
     void *event_cb_arg;
@@ -64,5 +67,11 @@ typedef enum {
 } bl_wps_err_t;
 
 bl_wps_err_t bl_wifi_wps_start(const struct bl_wps_config *config);
+bl_wps_err_t bl_wifi_wps_ap_start(const struct bl_wps_config *config,
+                                  const char *ssid,
+                                  const char *passphrase);
+void bl_wifi_wps_stop(void);
+int bl_wifi_wps_ap_get_ies(const uint8_t **beacon_ie, uint16_t *beacon_ie_len,
+                           const uint8_t **probe_resp_ie, uint16_t *probe_resp_ie_len);
 
 #endif /* end of include guard: BL_WPS_H_BSO9J1QR */

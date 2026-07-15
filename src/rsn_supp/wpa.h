@@ -33,7 +33,9 @@ bool wpa_sta_is_cur_pmksa_set(void);
 bool wpa_sta_in_4way_handshake(void);
 bool wpa_sta_cur_pmksa_matches_akm(void);
 
+#ifndef WPA_ASSERT
 #define WPA_ASSERT  assert
+#endif
 
 struct l2_ethhdr {
     u8 h_dest[ETH_ALEN];

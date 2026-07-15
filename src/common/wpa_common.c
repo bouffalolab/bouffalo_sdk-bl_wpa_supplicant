@@ -512,8 +512,10 @@ int wpa_eapol_key_mic(const u8 *key, int ver, const u8 *buf, size_t len,
 	case WPA_KEY_INFO_TYPE_HMAC_MD5_RC4:
 		    return hmac_md5(key, 16, buf, len, mic);
 	case WPA_KEY_INFO_TYPE_HMAC_SHA1_AES:
-		if (hmac_sha1(key, 16, buf, len, hash))
+		if (hmac_sha1(key, 16, buf, len, hash)) {
+			wpa_printf(MSG_DEBUG, "WPA: EAPOL-Key MIC HMAC-SHA1 failed");
 			return -1;
+		}
 		memcpy(mic, hash, MD5_MAC_LEN);
 		break;
 #ifdef CONFIG_IEEE80211W
@@ -524,6 +526,7 @@ int wpa_eapol_key_mic(const u8 *key, int ver, const u8 *buf, size_t len,
 		return omac1_aes_128(key, buf, len, mic);
 #endif /* CONFIG_IEEE80211W */
 	default:
+		wpa_printf(MSG_DEBUG, "WPA: EAPOL-Key MIC unknown key descriptor ver=%d", ver);
 		return -1;
 	}
 
@@ -648,7 +651,7 @@ void wpa_pmk_to_ptk(const u8 *pmk, size_t pmk_len, const char *label,
 	{
 	    sha1_prf(pmk, pmk_len, label, data, sizeof(data), ptk, ptk_len);
 	}
-	wpa_printf(MSG_DEBUG, "WPA: PTK derivation - A1=" MACSTR " A2=" MACSTR"\n",
+	wpa_printf(MSG_DEBUG, "WPA: PTK derivation - A1=" MACSTR " A2=" MACSTR"",
 		   MAC2STR(addr1), MAC2STR(addr2));
 
 	wpa_hexdump(MSG_MSGDUMP, "WPA: PMK", pmk, pmk_len);

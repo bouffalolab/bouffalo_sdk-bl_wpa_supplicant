@@ -24,6 +24,7 @@
 /* Include possible build time configuration before including anything else */
 #ifndef __ets__
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>

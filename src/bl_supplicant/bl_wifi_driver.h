@@ -33,12 +33,6 @@ typedef int bl_err_t;
 #define BL_OK          0       /*!< bl_err_t value indicating success (no error) */
 #define BL_FAIL        -1      /*!< Generic bl_err_t code indicating failure */
 
-/* wifi_appie_t is in rom code and can't be changed anymore, use wifi_appie_ram_t for new app IEs */
-typedef enum {
-    WIFI_APPIE_RM_ENABLED_CAPS = WIFI_APPIE_MAX,
-    WIFI_APPIE_RAM_MAX,
-} wifi_appie_ram_t;
-
 typedef enum {
     WPA2_ENT_EAP_STATE_NOT_START,
     WPA2_ENT_EAP_STATE_IN_PROGRESS,

@@ -48,6 +48,11 @@ extern int wps_testing_dummy_cred;
 #define WPS_OOB_DEVICE_PASSWORD_MIN_LEN 16
 #define WPS_OOB_DEVICE_PASSWORD_LEN 32
 #define WPS_OOB_PUBKEY_HASH_LEN 20
+#define WPS_DEV_NAME_MAX_LEN 32
+#define WPS_MANUFACTURER_MAX_LEN 64
+#define WPS_MODEL_NAME_MAX_LEN 32
+#define WPS_MODEL_NUMBER_MAX_LEN 32
+#define WPS_SERIAL_NUMBER_MAX_LEN 32
 
 /* Attribute Types */
 enum wps_attribute {
@@ -159,7 +164,11 @@ enum wps_dev_password_id {
 	DEV_PW_MACHINE_SPECIFIED = 0x0002,
 	DEV_PW_REKEY = 0x0003,
 	DEV_PW_PUSHBUTTON = 0x0004,
-	DEV_PW_REGISTRAR_SPECIFIED = 0x0005
+	DEV_PW_REGISTRAR_SPECIFIED = 0x0005,
+#if defined(CONFIG_BL_SUPPLICANT_P2P) || defined(CONFIG_P2P)
+	DEV_PW_NFC_CONNECTION_HANDOVER = 0x0007,
+	DEV_PW_P2PS_DEFAULT = 0x0008
+#endif
 };
 
 /* WPS message flag */
@@ -256,6 +265,7 @@ enum wps_error_indication {
 #define WPS_CONFIG_VIRT_DISPLAY 0x2008
 #define WPS_CONFIG_PHY_DISPLAY 0x4008
 #endif /* CONFIG_WPS2 */
+#define WPS_CONFIG_P2PS 0x1000
 
 /* Connection Type Flags */
 #define WPS_CONN_ESS 0x01

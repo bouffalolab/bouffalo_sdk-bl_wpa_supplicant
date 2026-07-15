@@ -49,6 +49,22 @@ menu "Supplicant"
             button bit without setting virtual/phycial display/button bit which
             will cause M2 validation fail, bypassing WPS-Config method validation.
 
+    config BL_SUPPLICANT_WPS
+        bool "Enable bl_supplicant WPS support"
+        default n
+        help
+            Build the WPS enrollee support used by wl80211 + bl_supplicant.
+            Leave this disabled to keep the default image size and RAM profile
+            effectively unchanged.
+
+    config BL_SUPPLICANT_P2P
+        bool "Enable bl_supplicant P2P support"
+        default n
+        select BL_SUPPLICANT_WPS
+        help
+            Build the staged P2P support for wl80211 + bl_supplicant.
+            This also enables the WPS foundation required by P2P.
+
     menuconfig WPA_11KV_SUPPORT
         bool "Enable 802.11k, 802.11v APIs handling in supplicant"
         default n

@@ -81,6 +81,29 @@ int hexstr2bin(const char *hex, u8 *buf, size_t len)
 	return 0;
 }
 
+
+int is_ctrl_char(char c)
+{
+	return c > 0 && c < 32;
+}
+
+
+int freq_range_list_includes(const struct wpa_freq_range_list *list,
+			     unsigned int freq)
+{
+	unsigned int i;
+
+	if (list == NULL)
+		return 0;
+
+	for (i = 0; i < list->num; i++) {
+		if (freq >= list->range[i].min && freq <= list->range[i].max)
+			return 1;
+	}
+
+	return 0;
+}
+
 void wpa_get_ntp_timestamp(u8 *buf)
 {
 	struct os_time now;

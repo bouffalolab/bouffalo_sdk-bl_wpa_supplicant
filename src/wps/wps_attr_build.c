@@ -45,11 +45,11 @@ int wps_build_public_key(struct wps_data *wps, struct wpabuf *msg, wps_key_mode_
 			wps->dh_privkey = NULL;
 			dh5_free(wps->dh_ctx);
 
-			wpa_printf(MSG_DEBUG, "build public key start\n");
+			wpa_printf(MSG_DEBUG, "build public key start");
 
 			wps->dh_ctx = dh5_init(&wps->dh_privkey, &pubkey);
 
-			wpa_printf(MSG_DEBUG, "build public key finish\n");
+			wpa_printf(MSG_DEBUG, "build public key finish");
 
 			pubkey = wpabuf_zeropad(pubkey, 192);
 		}
@@ -192,7 +192,7 @@ int wps_build_version(struct wpabuf *msg)
 
 
 int wps_build_wfa_ext(struct wpabuf *msg, int req_to_enroll,
-		      const u8 *auth_macs, size_t auth_macs_count)
+		      const u8 *auth_macs, size_t auth_macs_count, ...)
 {
 #ifdef CONFIG_WPS2
 	u8 *len;

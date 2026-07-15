@@ -11,6 +11,8 @@ sdk_add_private_compile_options(-Werror)
 sdk_add_include_directories(include)
 sdk_add_include_directories(include/bl_supplicant)
 
+sdk_add_private_include_directories(include)
+sdk_add_private_include_directories(include/bl_supplicant)
 sdk_add_private_include_directories(port/include)
 sdk_add_private_include_directories(src)
 
@@ -69,3 +71,49 @@ sdk_add_compile_definitions(-DPSK_SUPPLICANT=1)
 sdk_add_compile_definitions(-DWPA3_SUPPORTED=1)
 sdk_add_compile_definitions(-DCONFIG_ECC)
 sdk_add_compile_definitions(-DUSE_MBEDTLS_CRYPTO)
+
+if(CONFIG_BL_SUPPLICANT_WPS OR CONFIG_BL_SUPPLICANT_P2P)
+    sdk_library_add_sources(src/bl_supplicant/bl_wps.c)
+    sdk_library_add_sources(src/bl_supplicant/bl_wps_ap.c)
+    sdk_library_add_sources(src/eap_peer/eap_common.c)
+    sdk_library_add_sources(src/rsn_supp/pmksa_cache.c)
+    sdk_library_add_sources(src/utils/base64.c)
+    sdk_library_add_sources(src/utils/uuid.c)
+    sdk_library_add_sources(src/wps/wps.c)
+    sdk_library_add_sources(src/wps/wps_attr_build.c)
+    sdk_library_add_sources(src/wps/wps_attr_parse.c)
+    sdk_library_add_sources(src/wps/wps_attr_process.c)
+    sdk_library_add_sources(src/wps/wps_common.c)
+    sdk_library_add_sources(src/wps/wps_dev_attr.c)
+    sdk_library_add_sources(src/wps/wps_enrollee.c)
+    sdk_library_add_sources(src/wps/wps_registrar.c)
+    sdk_library_add_sources(src/wps/wps_validate.c)
+endif()
+
+if(CONFIG_BL_SUPPLICANT_P2P)
+    set(bl_p2p_sources
+        src/p2p/p2p.c
+        src/p2p/p2p_build.c
+        src/p2p/p2p_dev_disc.c
+        src/p2p/p2p_go_neg.c
+        src/p2p/p2p_group.c
+        src/p2p/p2p_invitation.c
+        src/p2p/p2p_parse.c
+        src/p2p/p2p_pd.c
+        src/p2p/p2p_sd.c
+        src/p2p/p2p_utils.c
+        src/common/gas.c
+    )
+
+    set_source_files_properties(${bl_p2p_sources} PROPERTIES
+        COMPILE_OPTIONS "-iquote${CMAKE_CURRENT_SOURCE_DIR}/src/p2p_compat;-iquote${CMAKE_CURRENT_SOURCE_DIR}/src/utils"
+    )
+
+    sdk_add_private_include_directories(src/p2p)
+    sdk_add_private_include_directories(src/wpa_crypto)
+    sdk_library_add_sources(src/bl_supplicant/bl_p2p_glue.c)
+    sdk_library_add_sources(src/bl_supplicant/bl_p2p_runtime.c)
+    sdk_library_add_sources(src/p2p_compat/ieee802_11_common_compat.c)
+    sdk_library_add_sources(${bl_p2p_sources})
+    sdk_add_compile_definitions(-DCONFIG_P2P)
+endif()

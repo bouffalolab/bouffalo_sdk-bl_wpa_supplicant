@@ -122,7 +122,7 @@ static int tls_mbedtls_read(void *ctx, unsigned char *buf, size_t len)
 	size_t data_len = len;
 
 	if (len > wpabuf_len(data->in_data)) {
-		wpa_printf(MSG_ERROR, "don't have suffient data\n");
+		wpa_printf(MSG_ERROR, "don't have suffient data");
 		data_len = wpabuf_len(data->in_data);
 	}
 
@@ -836,7 +836,7 @@ static int tls_connection_prf(void *tls_ctx, struct tls_connection *conn,
 	}
 
 	if (ret < 0) {
-		wpa_printf(MSG_ERROR, "prf failed, ret=%d\n", ret);
+		wpa_printf(MSG_ERROR, "prf failed, ret=%d", ret);
 	}
 	wpa_hexdump_key(MSG_MSGDUMP, "key", out, out_len);
 

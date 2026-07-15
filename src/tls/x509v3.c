@@ -49,7 +49,7 @@ void x509_certificate_free(struct x509_certificate *cert)
 		return;
 	if (cert->next) {
 		wpa_printf(MSG_DEBUG, "X509: x509_certificate_free: cer=%p "
-			   "was still on a list (next=%p)\n",
+			   "was still on a list (next=%p)",
 			   cert, cert->next);
 	}
 	x509_free_name(&cert->issuer);

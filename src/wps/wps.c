@@ -93,7 +93,7 @@ int wps_is_selected_pbc_registrar(const struct wpabuf *msg, u8 *bssid)
     	else {
     	   for (i = 0; i < WPS_MAX_DIS_AP_NUM; i++) {
     	    	if (0 == os_memcmp(sm->dis_ap_list[i].bssid, bssid, 6)) {
-    	    		wpa_printf(MSG_DEBUG, "discard ap bssid[%02x:%02x:%02x:%02x:%02x:%02x]\n", \
+    	    		wpa_printf(MSG_DEBUG, "discard ap bssid[%02x:%02x:%02x:%02x:%02x:%02x]", \
     	    				bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
     	    		os_free(attr);
     	    		return 0;
@@ -137,7 +137,7 @@ static int is_selected_pin_registrar(struct wps_parse_attr *attr, u8 *bssid)
     	else {
     		for (i = 0; i < WPS_MAX_DIS_AP_NUM; i++) {
     		    if (0 == os_memcmp(sm->dis_ap_list[i].bssid, bssid, 6)) {
-    		    	wpa_printf(MSG_DEBUG, "discard ap bssid[%02x:%02x:%02x:%02x:%02x:%02x]\n", \
+    		    	wpa_printf(MSG_DEBUG, "discard ap bssid[%02x:%02x:%02x:%02x:%02x:%02x]", \
     		    	    bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
     		        return 0;
     		    }
@@ -369,7 +369,7 @@ struct wpabuf * wps_build_probe_req_ie(u16 pw_id, struct wps_device_data *dev,
 {
     struct wpabuf *ie;
 
-    wpa_printf(MSG_DEBUG,  "WPS: Building WPS IE for Probe Request\n");
+    wpa_printf(MSG_DEBUG,  "WPS: Building WPS IE for Probe Request");
 
     ie = wpabuf_alloc(400);
     if (ie == NULL) {

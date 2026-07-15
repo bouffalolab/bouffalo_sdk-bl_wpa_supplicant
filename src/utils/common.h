@@ -373,6 +373,7 @@ int hwaddr_compact_aton(const char *txt, u8 *addr);
 int hwaddr_aton2(const char *txt, u8 *addr);
 int hex2byte(const char *hex);
 int hexstr2bin(const char *hex, u8 *buf, size_t len);
+int is_ctrl_char(char c);
 void inc_byte_array(u8 *counter, size_t len);
 void wpa_get_ntp_timestamp(u8 *buf);
 int wpa_scnprintf(char *buf, size_t size, const char *fmt, ...);
@@ -441,6 +442,8 @@ struct wpa_freq_range_list {
 
 void wpa_bin_clear_free(void *bin, size_t len);
 int int_array_len(const int *a);
+int freq_range_list_includes(const struct wpa_freq_range_list *list,
+			     unsigned int freq);
 void bin_clear_free(void *bin, size_t len);
 void str_clear_free(char *str);
 char * get_param(const char *cmd, const char *param);

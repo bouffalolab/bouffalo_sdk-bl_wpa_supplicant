@@ -84,7 +84,7 @@ sm->data ## _ ## state = machine ## _ ## _state;
 if (!global || sm->data ## _ ## state != machine ## _ ## _state) { \
 	sm->changed = TRUE; \
 	wpa_printf(MSG_DEBUG, STATE_MACHINE_DEBUG_PREFIX ": " MACSTR " " \
-		   #machine " entering state " #_state"\n", \
+		   #machine " entering state " #_state"", \
 		   MAC2STR(STATE_MACHINE_ADDR)); \
 } \
 sm->data ## _ ## state = machine ## _ ## _state;

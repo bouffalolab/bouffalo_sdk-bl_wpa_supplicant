@@ -2041,7 +2041,7 @@ int esp_wifi_wps_enable(const esp_wps_config_t *config)
     }
 
     s_wps_enabled = true;
-    wpa_printf(MSG_DEBUG, "wifi wps task: prio:%d, stack:%d\n", 2, WPS_TASK_STACK_SIZE);
+    wpa_printf(MSG_DEBUG, "wifi wps task: prio:%d, stack:%d", 2, WPS_TASK_STACK_SIZE);
     API_MUTEX_GIVE();
     return ret;
 #else
@@ -2073,7 +2073,7 @@ int wifi_wps_enable_internal(const esp_wps_config_t *config)
         return ret;
     }
 
-    wpa_printf(MSG_INFO, "wifi_wps_enable\n");
+    wpa_printf(MSG_INFO, "wifi_wps_enable");
 
     wps_set_type(config->wps_type);
     wps_set_status(WPS_STATUS_DISABLE);
@@ -2112,7 +2112,7 @@ int esp_wifi_wps_disable(void)
         return ESP_OK;
     }
 
-    wpa_printf(MSG_INFO, "wifi_wps_disable\n");
+    wpa_printf(MSG_INFO, "wifi_wps_disable");
     wps_set_type(WPS_TYPE_DISABLE); /* Notify WiFi task */
 
     /* Call wps_delete_timer to delete all WPS timer, no timer will call wps_post()

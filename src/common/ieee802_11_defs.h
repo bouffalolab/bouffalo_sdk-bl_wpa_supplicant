@@ -870,4 +870,8 @@ enum phy_type {
 #define NEI_REP_BSSID_INFO_VHT BIT(12)
 #define NEI_REP_BSSID_INFO_FTM BIT(13)
 
+#if defined(CONFIG_BL_SUPPLICANT_P2P) || defined(CONFIG_P2P)
+#include "ieee802_11_defs_p2p.h"
+#endif
+
 #endif /* IEEE802_11_DEFS_H */

@@ -153,7 +153,7 @@ int hostapd_setup_wpa_psk(struct hostapd_bss_config *conf)
                    "instead of passphrase");
         } else {
         	wpa_printf(MSG_DEBUG, "Deriving WPA PSK based on "
-                   "passphrase\n");
+                   "passphrase");
             if (hostapd_derive_psk(ssid) < 0)
                 return -1;
         }

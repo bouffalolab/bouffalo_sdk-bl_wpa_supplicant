@@ -678,6 +678,18 @@ struct wps_context {
 	 */
 	size_t network_key_len;
 
+#ifdef CONFIG_WPS_PIN
+	/**
+	 * ap_pin - Locally configured AP PIN for internal Registrar fallback
+	 */
+	u8 ap_pin[16];
+
+	/**
+	 * ap_pin_len - Length of ap_pin in octets
+	 */
+	size_t ap_pin_len;
+#endif
+
 	/**
 	 * psk - The current network PSK
 	 *
@@ -1084,6 +1096,9 @@ struct wps_sm {
     u8 scan_cnt;
     u8 discover_ssid_cnt;
     bool ignore_sel_reg;
+#if defined(CONFIG_BL_SUPPLICANT_P2P)
+    bool p2p_client_wpa_started;
+#endif
     struct discard_ap_list_t dis_ap_list[WPS_MAX_DIS_AP_NUM];
     u8 discard_ap_cnt;
 

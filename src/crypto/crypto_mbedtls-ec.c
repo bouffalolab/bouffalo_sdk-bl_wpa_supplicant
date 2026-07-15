@@ -468,7 +468,7 @@ void crypto_debug_print_point(const char *title, struct crypto_ec *e,
 	u8 x[32], y[32];
 
 	if (crypto_ec_point_to_bin(e, point, x, y) < 0) {
-		wpa_printf(MSG_ERROR, "error: failed to get corrdinates\n");
+		wpa_printf(MSG_ERROR, "error: failed to get corrdinates");
 		return;
 	}
 
@@ -481,7 +481,7 @@ static struct crypto_key *crypto_alloc_key(void)
 	mbedtls_pk_context *key = os_malloc(sizeof(*key));
 
 	if (!key) {
-		wpa_printf(MSG_ERROR, "%s: memory allocation failed\n", __func__);
+		wpa_printf(MSG_ERROR, "%s: memory allocation failed", __func__);
 		return NULL;
 	}
 	mbedtls_pk_init(key);
@@ -499,7 +499,7 @@ struct crypto_key * crypto_ec_set_pubkey_point(const struct crypto_ec_group *gro
 	mbedtls_pk_context *key = (mbedtls_pk_context *)crypto_alloc_key();
 
 	if (!key) {
-		wpa_printf(MSG_ERROR, "%s: memory allocation failed\n", __func__);
+		wpa_printf(MSG_ERROR, "%s: memory allocation failed", __func__);
 		return NULL;
 	}
 
@@ -581,7 +581,7 @@ int crypto_ec_get_priv_key_der(struct crypto_key *key, unsigned char **key_data,
 	*key_data = os_malloc(*key_len);
 
 	if (!*key_data) {
-		wpa_printf(MSG_ERROR, "memory allocation failed\n");
+		wpa_printf(MSG_ERROR, "memory allocation failed");
 		return -1;
 	}
 	os_memcpy(*key_data, der_data, *key_len);
@@ -646,7 +646,7 @@ struct crypto_key *crypto_ec_get_key(const u8 *privkey, size_t privkey_len)
 	mbedtls_pk_context *kctx = (mbedtls_pk_context *)crypto_alloc_key();
 
 	if (!kctx) {
-		wpa_printf(MSG_ERROR, "memory allocation failed\n");
+		wpa_printf(MSG_ERROR, "memory allocation failed");
 		return NULL;
 	}
 #ifdef CONFIG_MBEDTLS_V2
@@ -724,7 +724,7 @@ int crypto_ecdh(struct crypto_key *key_own, struct crypto_key *key_peer,
 
 	/* set params from our key */
 	if (mbedtls_ecdh_get_params(ctx, mbedtls_pk_ec(*own), MBEDTLS_ECDH_OURS) < 0) {
-		wpa_printf(MSG_ERROR, "failed to set our ecdh params\n");
+		wpa_printf(MSG_ERROR, "failed to set our ecdh params");
 		goto fail;
 	}
 
@@ -733,17 +733,17 @@ int crypto_ecdh(struct crypto_key *key_own, struct crypto_key *key_peer,
 #endif
 	/* set params from peers key */
 	if (mbedtls_ecdh_get_params(ctx, mbedtls_pk_ec(*peer), MBEDTLS_ECDH_THEIRS) < 0) {
-		wpa_printf(MSG_ERROR, "failed to set peer's ecdh params\n");
+		wpa_printf(MSG_ERROR, "failed to set peer's ecdh params");
 		goto fail;
 	}
 
 	if (mbedtls_ecdh_calc_secret(ctx, secret_len, secret, DPP_MAX_SHARED_SECRET_LEN, NULL, NULL) < 0) {
-		wpa_printf(MSG_ERROR, "failed to calculate secret\n");
+		wpa_printf(MSG_ERROR, "failed to calculate secret");
 		goto fail;
 	}
 
 	if (*secret_len > DPP_MAX_SHARED_SECRET_LEN) {
-		wpa_printf(MSG_ERROR, "secret len=%d is too big\n", *secret_len);
+		wpa_printf(MSG_ERROR, "secret len=%d is too big", *secret_len);
 		goto fail;
 	}
 
@@ -764,7 +764,7 @@ int crypto_ecdsa_get_sign(unsigned char *hash,
 
 	mbedtls_ecdsa_context *ctx = os_malloc(sizeof(*ctx));
 	if (!ctx) {
-		wpa_printf(MSG_ERROR,"failed to allcate memory\n");
+		wpa_printf(MSG_ERROR,"failed to allcate memory");
 		return -1;
 	}
 	mbedtls_ecdsa_init(ctx);
@@ -790,7 +790,7 @@ int crypto_edcsa_sign_verify(const unsigned char *hash,
 
 	mbedtls_ecdsa_context *ctx = os_malloc(sizeof(*ctx));
 	if (!ctx) {
-		wpa_printf(MSG_ERROR, "failed to allcate memory\n");
+		wpa_printf(MSG_ERROR, "failed to allcate memory");
 		return ret;
 	}
 	mbedtls_ecdsa_init(ctx);
@@ -800,7 +800,7 @@ int crypto_edcsa_sign_verify(const unsigned char *hash,
 
 	if((ret = mbedtls_ecdsa_verify(&ctx->MBEDTLS_PRIVATE(grp), hash, hlen,
 					&ctx->MBEDTLS_PRIVATE(Q), (mbedtls_mpi *)r, (mbedtls_mpi *)s)) != 0){
-		wpa_printf(MSG_ERROR, "ecdsa verification failed\n");
+		wpa_printf(MSG_ERROR, "ecdsa verification failed");
 		return ret;
 	}
 
@@ -816,11 +816,11 @@ void crypto_debug_print_ec_key(const char *title, struct crypto_key *key)
 	mbedtls_pk_context *pkey = (mbedtls_pk_context *)key;
 	mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *pkey );
 	u8 x[32], y[32], d[32];
-	wpa_printf(MSG_ERROR, "curve: %s\n",
-			mbedtls_ecp_curve_info_from_grp_id( ecp->grp.id )->name );
+	wpa_printf(MSG_ERROR, "curve: %s",
+			mbedtls_ecp_curve_info_from_grp_id( mbedtls_ecp_keypair_get_group_id(ecp) )->name );
 	int len = mbedtls_mpi_size((mbedtls_mpi *)crypto_ec_get_prime((struct crypto_ec *)crypto_ec_get_group_from_key(key)));
 
-	wpa_printf(MSG_ERROR, "prime len is %d\n", len);
+	wpa_printf(MSG_ERROR, "prime len is %d", len);
 	crypto_ec_point_to_bin((struct crypto_ec *)crypto_ec_get_group_from_key(key), crypto_ec_get_public_key(key), x, y);
 	crypto_bignum_to_bin(crypto_ec_get_private_key(key),
 			d, len, len);
@@ -855,7 +855,7 @@ struct crypto_key * crypto_ec_gen_keypair(u16 ike_group)
 	mbedtls_pk_context *kctx = (mbedtls_pk_context *)crypto_alloc_key();
 
 	if (!kctx) {
-		wpa_printf(MSG_ERROR, "%s: memory allocation failed\n", __func__);
+		wpa_printf(MSG_ERROR, "%s: memory allocation failed", __func__);
 		return NULL;
 	}
 
@@ -990,7 +990,7 @@ int crypto_ec_write_pub_key(struct crypto_key *key, unsigned char **key_buf)
 
 	*key_buf = os_malloc(len);
 	if (!*key_buf) {
-		wpa_printf(MSG_ERROR, "%s: memory allocation failed\n", __func__);
+		wpa_printf(MSG_ERROR, "%s: memory allocation failed", __func__);
 		return 0;
 	}
 	os_memcpy(*key_buf, output_buf + 1600 - len, len);

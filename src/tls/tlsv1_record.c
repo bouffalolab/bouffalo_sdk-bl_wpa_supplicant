@@ -112,7 +112,7 @@ int tlsv1_record_change_write_cipher(struct tlsv1_record_layer *rl)
 int tlsv1_record_change_read_cipher(struct tlsv1_record_layer *rl)
 {
 	wpa_printf(MSG_DEBUG, "TLSv1: Record Layer - New read cipher suite "
-		   "0x%04x \n", rl->cipher_suite);
+		   "0x%04x ", rl->cipher_suite);
 	rl->read_cipher_suite = rl->cipher_suite;
 	os_memset(rl->read_seq_num, 0, TLS_SEQ_NUM_LEN);
 
