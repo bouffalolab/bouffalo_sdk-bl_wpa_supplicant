@@ -97,7 +97,7 @@ void wpa_sendto_wrapper(bool is_sta, void *buffer, u16 len,
     wpa_printf(MSG_INFO,
                "wl80211 raw tx failed: vif=%s len=%u ret=%d",
                is_sta ? "sta" : "ap", len, ret);
-    if (ret == -1 && cfm) {
+    if (cfm) {
       if (cfm->cb) {
         cfm->cb(cfm->cb_arg, false);
       }
